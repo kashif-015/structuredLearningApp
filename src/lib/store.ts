@@ -13,6 +13,7 @@ interface AuthState {
   register: (name: string, email: string, password: string) => void;
   logout: () => void;
   hydrate: () => void;
+  updateUser: (data: Partial<User>) => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -50,6 +51,16 @@ export const useAuthStore = create<AuthState>((set) => ({
         }
       }
     }
+  },
+  updateUser: (data: Partial<User>) => {
+    set((state) => {
+      if (!state.user) return state;
+      const newUser = { ...state.user, ...data };
+      if (typeof window !== "undefined") {
+        localStorage.setItem("eduflow-auth", JSON.stringify({ isAuthenticated: state.isAuthenticated, user: newUser }));
+      }
+      return { user: newUser };
+    });
   },
 }));
 

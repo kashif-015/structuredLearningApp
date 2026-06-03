@@ -2,15 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Library, PlusCircle, Layers, BarChart3 } from "lucide-react";
+import { Home, Library, PlusCircle, Layers, BarChart3, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const tabs = [
   { label: "Home", icon: Home, href: "/dashboard" },
   { label: "Courses", icon: Library, href: "/dashboard/courses" },
   { label: "Import", icon: PlusCircle, href: "/dashboard/import" },
-  { label: "Cards", icon: Layers, href: "/dashboard/flashcards" },
   { label: "Progress", icon: BarChart3, href: "/dashboard/progress" },
+  { label: "Settings", icon: Settings, href: "/dashboard/settings" },
 ];
 
 export default function MobileNav() {
@@ -29,7 +29,7 @@ export default function MobileNav() {
               key={tab.href}
               href={tab.href}
               className={cn(
-                "flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition-colors min-w-[56px]",
+                "flex flex-col items-center gap-1 py-1 px-1 sm:px-2 rounded-xl transition-colors flex-1 max-w-[64px]",
                 isActive ? "text-primary" : "text-gray-400"
               )}
             >
