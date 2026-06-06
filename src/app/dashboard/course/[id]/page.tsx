@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, use } from "react";
+import { useState, use, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ChevronLeft,
   CheckCircle,
@@ -21,10 +22,17 @@ import {
   Layers,
   X,
   Brain,
+  MessageSquare,
+  Send,
 } from "lucide-react";
 import { useAppStore } from "@/lib/store";
 import { formatDuration } from "@/lib/utils";
-import { generateSummary, generateQuiz, generateFlashcards } from "@/lib/api";
+import { generateSummary, generateQuiz, generateFlashcards, sendChatMessage } from "@/lib/api";
+
+type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
 
 export default function CourseLearningPage({
   params,
@@ -32,7 +40,8 @@ export default function CourseLearningPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const { courses, toggleLessonComplete } = useAppStore();
+  const { courses, toggleLessonComplete, deleteCourse } = useAppStore();
+  const router = useRouter();
   const course = courses.find((c) => c.id === id);
 
   const [expandedModule, setExpandedModule] = useState<string | null>(
@@ -56,10 +65,14 @@ export default function CourseLearningPage({
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [aiQuiz, setAiQuiz] = useState<any[] | null>(null);
   const [aiFlashcards, setAiFlashcards] = useState<any[] | null>(null);
-  const [activeAiTab, setActiveAiTab] = useState<"summary" | "quiz" | "flashcards" | null>(null);
+  const [activeAiTab, setActiveAiTab] = useState<"summary" | "quiz" | "flashcards" | "chat" | null>(null);
   const [quizAnswers, setQuizAnswers] = useState<Record<number, number>>({});
   const [quizSubmitted, setQuizSubmitted] = useState(false);
   const [flashcardFlipped, setFlashcardFlipped] = useState<Set<number>>(new Set());
+  const [chatByLesson, setChatByLesson] = useState<Record<string, ChatMessage[]>>({});
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
 
   const resetAiState = () => {
     setAiSummary(null);
@@ -107,6 +120,53 @@ export default function CourseLearningPage({
     finally { setAiLoading(null); }
   };
 
+  const handleSendChat = async () => {
+    if (!selectedLesson || !course) return;
+    const content = chatInput.trim();
+    if (!content || chatLoading) return;
+
+    const userMessage: ChatMessage = { role: "user", content };
+    const history = chatByLesson[selectedLesson.id] || [];
+    const nextHistory = [...history, userMessage];
+
+    setActiveAiTab("chat");
+    setChatByLesson((prev) => ({ ...prev, [selectedLesson.id]: nextHistory }));
+    setChatInput("");
+    setChatError(null);
+    setChatLoading(true);
+
+    try {
+      const response = await sendChatMessage(nextHistory, {
+        title: `${course.title} - ${selectedLesson.title}`,
+        lessonTitle: selectedLesson.title,
+        lessonSummary: selectedLesson.summary,
+      });
+
+      setChatByLesson((prev) => ({
+        ...prev,
+        [selectedLesson.id]: [
+          ...(prev[selectedLesson.id] || nextHistory),
+          { role: "assistant", content: response },
+        ],
+      }));
+    } catch {
+      setChatError("Could not get a response right now.");
+      setChatByLesson((prev) => ({
+        ...prev,
+        [selectedLesson.id]: [
+          ...(prev[selectedLesson.id] || nextHistory),
+          {
+            role: "assistant",
+            content:
+              "I could not fetch a response just now. Please try again in a moment.",
+          },
+        ],
+      }));
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
   if (!course) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -121,9 +181,39 @@ export default function CourseLearningPage({
 
   const allLessons = course.modules.flatMap((m) => m.lessons);
   const selectedLesson = allLessons.find((l) => l.id === selectedLessonId);
+  const lessonChatMessages = selectedLesson
+    ? (chatByLesson[selectedLesson.id] || [])
+    : [];
   const currentIndex = allLessons.findIndex((l) => l.id === selectedLessonId);
   const nextLesson = currentIndex < allLessons.length - 1 ? allLessons[currentIndex + 1] : null;
   const completedCount = allLessons.filter((l) => l.completed).length;
+
+  useEffect(() => {
+    if (!selectedLesson) return;
+
+    setAiSummary(null);
+    setAiQuiz(null);
+    setAiFlashcards(null);
+    setActiveAiTab(null);
+    setQuizAnswers({});
+    setQuizSubmitted(false);
+    setFlashcardFlipped(new Set());
+    setChatInput("");
+    setChatError(null);
+
+    setChatByLesson((prev) => {
+      if (prev[selectedLesson.id]) return prev;
+      return {
+        ...prev,
+        [selectedLesson.id]: [
+          {
+            role: "assistant",
+            content: `Ask me anything about "${selectedLesson.title}". I can explain concepts, examples, and clear your doubts from this lecture.`,
+          },
+        ],
+      };
+    });
+  }, [selectedLesson?.id]);
 
   return (
     <div className="min-h-screen">
@@ -157,6 +247,17 @@ export default function CourseLearningPage({
             />
           </div>
         </div>
+        <button
+          onClick={() => {
+            if (typeof window !== "undefined" && window.confirm("Delete this course? This will remove it from your library.")) {
+              deleteCourse(course.id);
+              router.push("/dashboard/courses");
+            }
+          }}
+          className="ml-2 text-sm text-red-600 hover:text-red-800"
+        >
+          Delete
+        </button>
       </div>
 
       <div className="flex">
@@ -325,27 +426,38 @@ export default function CourseLearningPage({
                       className="overflow-hidden"
                     >
                       {/* Tool Buttons */}
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
+                      <div className="grid grid-cols-4 gap-2 sm:gap-3 mt-4">
                         <button onClick={handleSummarize} disabled={aiLoading !== null}
-                          className={`card card-interactive p-4 text-center transition-all ${
+                          className={`card card-interactive h-24 sm:h-auto p-2 sm:p-4 flex flex-col items-center justify-center text-center transition-all ${
                             activeAiTab === "summary" ? "ring-2 ring-primary bg-primary-light" : ""
                           } disabled:opacity-50`}>
-                          <Brain className="w-5 h-5 mx-auto mb-2 text-primary" />
-                          <span className="text-xs font-medium text-gray-700">Summarize Lecture</span>
+                          <Brain className="w-5 h-5 mb-1 sm:mb-2 text-primary" />
+                          <span className="text-[11px] leading-tight font-semibold text-gray-700 sm:hidden">Summary</span>
+                          <span className="hidden sm:inline text-xs font-medium text-gray-700">Summarize Lecture</span>
                         </button>
                         <button onClick={handleGenerateQuiz} disabled={aiLoading !== null}
-                          className={`card card-interactive p-4 text-center transition-all ${
+                          className={`card card-interactive h-24 sm:h-auto p-2 sm:p-4 flex flex-col items-center justify-center text-center transition-all ${
                             activeAiTab === "quiz" ? "ring-2 ring-primary bg-primary-light" : ""
                           } disabled:opacity-50`}>
-                          <HelpCircle className="w-5 h-5 mx-auto mb-2 text-accent" />
-                          <span className="text-xs font-medium text-gray-700">Generate Quiz</span>
+                          <HelpCircle className="w-5 h-5 mb-1 sm:mb-2 text-accent" />
+                          <span className="text-[11px] leading-tight font-semibold text-gray-700 sm:hidden">Quiz</span>
+                          <span className="hidden sm:inline text-xs font-medium text-gray-700">Generate Quiz</span>
                         </button>
                         <button onClick={handleGenerateFlashcards} disabled={aiLoading !== null}
-                          className={`card card-interactive p-4 text-center transition-all ${
+                          className={`card card-interactive h-24 sm:h-auto p-2 sm:p-4 flex flex-col items-center justify-center text-center transition-all ${
                             activeAiTab === "flashcards" ? "ring-2 ring-primary bg-primary-light" : ""
                           } disabled:opacity-50`}>
-                          <Layers className="w-5 h-5 mx-auto mb-2 text-success" />
-                          <span className="text-xs font-medium text-gray-700">Create Flashcards</span>
+                          <Layers className="w-5 h-5 mb-1 sm:mb-2 text-success" />
+                          <span className="text-[11px] leading-tight font-semibold text-gray-700 sm:hidden">Cards</span>
+                          <span className="hidden sm:inline text-xs font-medium text-gray-700">Create Flashcards</span>
+                        </button>
+                        <button onClick={() => setActiveAiTab("chat")} disabled={aiLoading !== null}
+                          className={`card card-interactive h-24 sm:h-auto p-2 sm:p-4 flex flex-col items-center justify-center text-center transition-all ${
+                            activeAiTab === "chat" ? "ring-2 ring-primary bg-primary-light" : ""
+                          } disabled:opacity-50`}>
+                          <MessageSquare className="w-5 h-5 mb-1 sm:mb-2 text-primary" />
+                          <span className="text-[11px] leading-tight font-semibold text-gray-700 sm:hidden">Doubts</span>
+                          <span className="hidden sm:inline text-xs font-medium text-gray-700">Ask Doubts</span>
                         </button>
                       </div>
 
@@ -443,6 +555,61 @@ export default function CourseLearningPage({
                               </div>
                             </button>
                           ))}
+                        </motion.div>
+                      )}
+
+                      {/* Chat Result */}
+                      {activeAiTab === "chat" && selectedLesson && (
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card p-5 mt-4">
+                          <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                            <MessageSquare className="w-4 h-4 text-primary" /> Lecture Doubt Solver
+                          </h3>
+
+                          <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 max-h-80 overflow-y-auto space-y-3">
+                            {lessonChatMessages.map((message, idx) => (
+                              <div
+                                key={idx}
+                                className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                              >
+                                <div
+                                  className={`max-w-[90%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
+                                    message.role === "user"
+                                      ? "bg-primary text-white"
+                                      : "bg-white border border-gray-200 text-gray-700"
+                                  }`}
+                                >
+                                  {message.content}
+                                </div>
+                              </div>
+                            ))}
+                            {chatLoading && (
+                              <div className="text-xs text-gray-500">Thinking about your doubt...</div>
+                            )}
+                          </div>
+
+                          {chatError && <p className="text-xs text-danger mt-2">{chatError}</p>}
+
+                          <form
+                            className="mt-3 flex items-center gap-2"
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              void handleSendChat();
+                            }}
+                          >
+                            <input
+                              value={chatInput}
+                              onChange={(e) => setChatInput(e.target.value)}
+                              placeholder="Ask a doubt from this lecture..."
+                              className="flex-1 h-11 rounded-xl border border-gray-200 bg-white px-3 text-sm outline-none focus:border-primary"
+                            />
+                            <button
+                              type="submit"
+                              disabled={chatLoading || !chatInput.trim()}
+                              className="btn btn-primary h-11 px-4 disabled:opacity-50"
+                            >
+                              <Send className="w-4 h-4" />
+                            </button>
+                          </form>
                         </motion.div>
                       )}
                     </motion.div>

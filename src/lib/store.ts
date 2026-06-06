@@ -77,6 +77,7 @@ interface AppState {
   toggleLessonComplete: (courseId: string, lessonId: string) => void;
   updateCourseProgress: (courseId: string) => void;
   importCourse: (course: Course) => void;
+  deleteCourse: (courseId: string) => void;
   setLessonSummary: (courseId: string, lessonId: string, summary: string) => void;
   hydrateCourses: () => void;
 }
@@ -121,6 +122,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   importCourse: (course: Course) => {
     set((state) => {
       const newCourses = [course, ...state.courses];
+      if (typeof window !== "undefined") localStorage.setItem("eduflow-courses", JSON.stringify(newCourses));
+      return { courses: newCourses };
+    });
+  },
+  deleteCourse: (courseId: string) => {
+    set((state) => {
+      const newCourses = state.courses.filter((c) => c.id !== courseId);
       if (typeof window !== "undefined") localStorage.setItem("eduflow-courses", JSON.stringify(newCourses));
       return { courses: newCourses };
     });

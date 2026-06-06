@@ -64,7 +64,14 @@ export async function generateFlashcards(videoTitle: string) {
   return data.flashcards;
 }
 
-export async function sendChatMessage(messages: { role: string; content: string }[], context: { title: string }) {
+export async function sendChatMessage(
+  messages: { role: string; content: string }[],
+  context: {
+    title: string;
+    lessonTitle?: string;
+    lessonSummary?: string;
+  }
+) {
   const res = await fetch(`${API_BASE}/ai/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
