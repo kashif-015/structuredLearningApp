@@ -19,6 +19,7 @@ export interface Lesson {
   title: string;
   duration: number; // minutes
   videoId: string;
+  position?: number; // 1-based position in original playlist
   completed: boolean;
   summary: string;
   resources: string[];
@@ -43,6 +44,7 @@ export interface Course {
   rating: number;
   enrolledDate: string;
   author: string;
+  playlistId?: string; // YouTube playlist ID for restricting embed
 }
 
 export interface Note {

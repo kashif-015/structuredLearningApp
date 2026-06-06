@@ -77,6 +77,8 @@ interface AppState {
   toggleLessonComplete: (courseId: string, lessonId: string) => void;
   updateCourseProgress: (courseId: string) => void;
   importCourse: (course: Course) => void;
+  setLessonSummary: (courseId: string, lessonId: string, summary: string) => void;
+  hydrateCourses: () => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -117,7 +119,42 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
   },
   importCourse: (course: Course) => {
-    set((state) => ({ courses: [course, ...state.courses] }));
+    set((state) => {
+      const newCourses = [course, ...state.courses];
+      if (typeof window !== "undefined") localStorage.setItem("eduflow-courses", JSON.stringify(newCourses));
+      return { courses: newCourses };
+    });
+  },
+  setLessonSummary: (courseId: string, lessonId: string, summary: string) => {
+    set((state) => {
+      const newCourses = state.courses.map((course) => {
+        if (course.id !== courseId) return course;
+        return {
+          ...course,
+          modules: course.modules.map((mod) => ({
+            ...mod,
+            lessons: mod.lessons.map((les) =>
+              les.id === lessonId ? { ...les, summary } : les
+            ),
+          })),
+        };
+      });
+      if (typeof window !== "undefined") localStorage.setItem("eduflow-courses", JSON.stringify(newCourses));
+      return { courses: newCourses };
+    });
+  },
+  hydrateCourses: () => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("eduflow-courses");
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          set({ courses: parsed });
+        } catch {
+          // ignore
+        }
+      }
+    }
   },
 }));
 

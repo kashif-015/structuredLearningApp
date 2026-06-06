@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, use } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import {
   ChevronLeft,
@@ -15,9 +15,16 @@ import {
   ArrowRight,
   FileText,
   ExternalLink,
+  Loader2,
+  Sparkles,
+  HelpCircle,
+  Layers,
+  X,
+  Brain,
 } from "lucide-react";
 import { useAppStore } from "@/lib/store";
 import { formatDuration } from "@/lib/utils";
+import { generateSummary, generateQuiz, generateFlashcards } from "@/lib/api";
 
 export default function CourseLearningPage({
   params,
@@ -43,18 +50,70 @@ export default function CourseLearningPage({
     }
   );
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  // AI Tools state
+  const [aiToolsOpen, setAiToolsOpen] = useState(false);
+  const [aiLoading, setAiLoading] = useState<string | null>(null);
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [aiQuiz, setAiQuiz] = useState<any[] | null>(null);
+  const [aiFlashcards, setAiFlashcards] = useState<any[] | null>(null);
+  const [activeAiTab, setActiveAiTab] = useState<"summary" | "quiz" | "flashcards" | null>(null);
+  const [quizAnswers, setQuizAnswers] = useState<Record<number, number>>({});
+  const [quizSubmitted, setQuizSubmitted] = useState(false);
+  const [flashcardFlipped, setFlashcardFlipped] = useState<Set<number>>(new Set());
+
+  const resetAiState = () => {
+    setAiSummary(null);
+    setAiQuiz(null);
+    setAiFlashcards(null);
+    setActiveAiTab(null);
+    setQuizAnswers({});
+    setQuizSubmitted(false);
+    setFlashcardFlipped(new Set());
+  };
+
+  const handleSummarize = async () => {
+    if (!selectedLesson || !course) return;
+    setActiveAiTab("summary");
+    setAiLoading("summary");
+    try {
+      const summary = await generateSummary(selectedLesson.title, `A lecture from the course ${course.title}`);
+      setAiSummary(summary);
+    } catch { setAiSummary("Failed to generate summary."); }
+    finally { setAiLoading(null); }
+  };
+
+  const handleGenerateQuiz = async () => {
+    if (!selectedLesson) return;
+    setActiveAiTab("quiz");
+    setAiLoading("quiz");
+    setQuizAnswers({});
+    setQuizSubmitted(false);
+    try {
+      const quiz = await generateQuiz(selectedLesson.title);
+      setAiQuiz(quiz);
+    } catch { setAiQuiz(null); }
+    finally { setAiLoading(null); }
+  };
+
+  const handleGenerateFlashcards = async () => {
+    if (!selectedLesson) return;
+    setActiveAiTab("flashcards");
+    setAiLoading("flashcards");
+    setFlashcardFlipped(new Set());
+    try {
+      const cards = await generateFlashcards(selectedLesson.title);
+      setAiFlashcards(cards);
+    } catch { setAiFlashcards(null); }
+    finally { setAiLoading(null); }
+  };
 
   if (!course) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center">
           <BookOpen className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">
-            Course not found
-          </h2>
-          <Link href="/dashboard/courses" className="btn btn-primary mt-4">
-            Back to Courses
-          </Link>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Course not found</h2>
+          <Link href="/dashboard/courses" className="btn btn-primary mt-4">Back to Courses</Link>
         </div>
       </div>
     );
@@ -77,16 +136,19 @@ export default function CourseLearningPage({
           <ChevronLeft className="w-4 h-4" />
           <span className="hidden sm:inline">Back</span>
         </Link>
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 pr-2">
           <h1 className="text-sm font-medium text-gray-900 truncate">
             {course.title}
           </h1>
         </div>
-        <div className="flex items-center gap-2 text-xs text-gray-500">
-          <span>
+        <div className="flex items-center gap-2 text-xs text-gray-500 shrink-0">
+          <span className="hidden sm:inline">
             {completedCount}/{allLessons.length} lessons
           </span>
-          <div className="w-20 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+          <span className="sm:hidden">
+            {completedCount}/{allLessons.length}
+          </span>
+          <div className="w-12 sm:w-20 h-1.5 bg-gray-100 rounded-full overflow-hidden">
             <div
               className="h-full bg-primary rounded-full transition-all"
               style={{
@@ -182,15 +244,25 @@ export default function CourseLearningPage({
               transition={{ duration: 0.3 }}
               className="max-w-4xl mx-auto px-4 sm:px-6 py-6"
             >
-              {/* Video Placeholder */}
-              <div className="w-full aspect-video bg-gray-900 rounded-2xl flex items-center justify-center mb-6 relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-gray-900" />
-                <div className="relative z-10 text-center">
-                  <PlayCircle className="w-16 h-16 text-white/50 mx-auto mb-3" />
-                  <p className="text-white/70 text-sm">
-                    Video Player — {selectedLesson.title}
-                  </p>
-                </div>
+              {/* Video Player */}
+              <div className="w-full aspect-video bg-gray-950 rounded-2xl mb-6 overflow-hidden shadow-lg">
+                {selectedLesson.videoId ? (
+                  <iframe
+                    key={selectedLesson.videoId}
+                    className="w-full h-full border-0"
+                    src={`https://www.youtube-nocookie.com/embed/${selectedLesson.videoId}?rel=0&modestbranding=1${course.playlistId ? `&list=${course.playlistId}` : ""}${selectedLesson.position ? `&index=${selectedLesson.position}` : ""}`}
+                    title={selectedLesson.title}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900">
+                    <div className="text-center">
+                      <PlayCircle className="w-16 h-16 text-white/40 mx-auto mb-3" />
+                      <p className="text-white/60 text-sm">{selectedLesson.title}</p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Lesson Info */}
@@ -210,7 +282,7 @@ export default function CourseLearningPage({
                   onClick={() =>
                     toggleLessonComplete(course.id, selectedLesson.id)
                   }
-                  className={`btn shrink-0 ${
+                  className={`btn shrink-0 w-full sm:w-auto justify-center ${
                     selectedLesson.completed
                       ? "bg-success-light text-success border border-success/20"
                       : "btn-primary"
@@ -230,15 +302,152 @@ export default function CourseLearningPage({
                 </button>
               </div>
 
-              {/* AI Summary */}
-              <div className="card p-5 mb-6">
-                <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-primary" />
-                  AI Summary
-                </h3>
-                <p className="text-sm text-gray-600 leading-relaxed">
-                  {selectedLesson.summary}
-                </p>
+              {/* AI Tools Button */}
+              <div className="mb-6">
+                <button
+                  onClick={() => { setAiToolsOpen(!aiToolsOpen); if (aiToolsOpen) resetAiState(); }}
+                  className={`btn w-full justify-center gap-2 h-11 text-sm font-medium transition-all ${
+                    aiToolsOpen
+                      ? "bg-primary text-white"
+                      : "bg-gradient-to-r from-primary/10 to-accent/10 text-primary border border-primary/20 hover:from-primary/20 hover:to-accent/20"
+                  }`}
+                >
+                  {aiToolsOpen ? <X className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
+                  {aiToolsOpen ? "Close AI Tools" : "AI Tools"}
+                </button>
+
+                <AnimatePresence>
+                  {aiToolsOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="overflow-hidden"
+                    >
+                      {/* Tool Buttons */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
+                        <button onClick={handleSummarize} disabled={aiLoading !== null}
+                          className={`card card-interactive p-4 text-center transition-all ${
+                            activeAiTab === "summary" ? "ring-2 ring-primary bg-primary-light" : ""
+                          } disabled:opacity-50`}>
+                          <Brain className="w-5 h-5 mx-auto mb-2 text-primary" />
+                          <span className="text-xs font-medium text-gray-700">Summarize Lecture</span>
+                        </button>
+                        <button onClick={handleGenerateQuiz} disabled={aiLoading !== null}
+                          className={`card card-interactive p-4 text-center transition-all ${
+                            activeAiTab === "quiz" ? "ring-2 ring-primary bg-primary-light" : ""
+                          } disabled:opacity-50`}>
+                          <HelpCircle className="w-5 h-5 mx-auto mb-2 text-accent" />
+                          <span className="text-xs font-medium text-gray-700">Generate Quiz</span>
+                        </button>
+                        <button onClick={handleGenerateFlashcards} disabled={aiLoading !== null}
+                          className={`card card-interactive p-4 text-center transition-all ${
+                            activeAiTab === "flashcards" ? "ring-2 ring-primary bg-primary-light" : ""
+                          } disabled:opacity-50`}>
+                          <Layers className="w-5 h-5 mx-auto mb-2 text-success" />
+                          <span className="text-xs font-medium text-gray-700">Create Flashcards</span>
+                        </button>
+                      </div>
+
+                      {/* Loading State */}
+                      {aiLoading && (
+                        <div className="card p-6 mt-4 flex items-center justify-center gap-3">
+                          <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                          <span className="text-sm text-gray-500">
+                            {aiLoading === "summary" ? "Generating summary..." : aiLoading === "quiz" ? "Creating quiz questions..." : "Building flashcards..."}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Summary Result */}
+                      {activeAiTab === "summary" && aiSummary && !aiLoading && (
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card p-5 mt-4">
+                          <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                            <Brain className="w-4 h-4 text-primary" /> AI Summary
+                          </h3>
+                          <div className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{aiSummary}</div>
+                        </motion.div>
+                      )}
+
+                      {/* Quiz Result */}
+                      {activeAiTab === "quiz" && aiQuiz && !aiLoading && (
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card p-5 mt-4">
+                          <h3 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                            <HelpCircle className="w-4 h-4 text-accent" /> Quiz — {aiQuiz.length} Questions
+                          </h3>
+                          <div className="space-y-5">
+                            {aiQuiz.map((q: any, qi: number) => (
+                              <div key={qi}>
+                                <p className="text-sm font-medium text-gray-900 mb-2">{qi + 1}. {q.question}</p>
+                                <div className="space-y-2">
+                                  {q.options.map((opt: string, oi: number) => {
+                                    const isSelected = quizAnswers[qi] === oi;
+                                    const isCorrect = quizSubmitted && opt === q.correct_answer;
+                                    const isWrong = quizSubmitted && isSelected && opt !== q.correct_answer;
+                                    return (
+                                      <button key={oi} disabled={quizSubmitted}
+                                        onClick={() => setQuizAnswers(prev => ({ ...prev, [qi]: oi }))}
+                                        className={`w-full text-left p-3 rounded-xl border text-sm transition-all ${
+                                          isCorrect ? "border-success bg-success-light/50 text-success" :
+                                          isWrong ? "border-danger bg-danger-light/50 text-danger" :
+                                          isSelected ? "border-primary bg-primary-light text-primary" :
+                                          "border-gray-200 hover:border-primary/30 text-gray-600"
+                                        }`}>
+                                        {opt}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          {!quizSubmitted ? (
+                            <button onClick={() => setQuizSubmitted(true)}
+                              disabled={Object.keys(quizAnswers).length < aiQuiz.length}
+                              className="btn btn-primary w-full mt-4 disabled:opacity-50">Check Answers</button>
+                          ) : (
+                            <div className="mt-4 p-4 rounded-xl bg-primary-light text-center">
+                              <p className="text-lg font-bold text-primary">
+                                {aiQuiz.filter((q: any, i: number) => q.options[quizAnswers[i]] === q.correct_answer).length}/{aiQuiz.length} Correct
+                              </p>
+                              <button onClick={handleGenerateQuiz} className="btn btn-ghost text-sm mt-2">Retry</button>
+                            </div>
+                          )}
+                        </motion.div>
+                      )}
+
+                      {/* Flashcards Result */}
+                      {activeAiTab === "flashcards" && aiFlashcards && !aiLoading && (
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-4 space-y-3">
+                          <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                            <Layers className="w-4 h-4 text-success" /> {aiFlashcards.length} Flashcards
+                          </h3>
+                          {aiFlashcards.map((card: any, ci: number) => (
+                            <button key={ci} onClick={() => setFlashcardFlipped(prev => {
+                              const next = new Set(prev);
+                              next.has(ci) ? next.delete(ci) : next.add(ci);
+                              return next;
+                            })} className="card p-4 w-full text-left transition-all hover:shadow-md">
+                              <div className="flex items-start gap-3">
+                                <span className="w-7 h-7 rounded-lg bg-primary-light text-primary text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">{ci + 1}</span>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-gray-900">{card.question}</p>
+                                  <AnimatePresence>
+                                    {flashcardFlipped.has(ci) && (
+                                      <motion.p initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
+                                        className="text-sm text-primary mt-2 pt-2 border-t border-gray-100">{card.answer}</motion.p>
+                                    )}
+                                  </AnimatePresence>
+                                  {!flashcardFlipped.has(ci) && <p className="text-xs text-gray-400 mt-1">Tap to reveal</p>}
+                                </div>
+                              </div>
+                            </button>
+                          ))}
+                        </motion.div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
               {/* Resources */}

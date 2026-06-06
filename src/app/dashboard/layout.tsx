@@ -24,7 +24,7 @@ export default function DashboardLayout({
 
       {/* Main content */}
       <main
-        className={`flex-1 transition-all duration-300 ${
+        className={`flex-1 min-w-0 transition-all duration-300 ${
           sidebarCollapsed ? "lg:ml-[72px]" : "lg:ml-[260px]"
         }`}
       >

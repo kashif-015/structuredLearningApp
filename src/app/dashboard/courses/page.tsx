@@ -30,7 +30,7 @@ export default function CoursesPage() {
   });
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
+    <div className="w-full max-w-full sm:max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 mobile-safe-bottom">
       <motion.div
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
@@ -45,7 +45,7 @@ export default function CoursesPage() {
               {courses.length} courses enrolled
             </p>
           </div>
-          <Link href="/dashboard/import" className="btn btn-primary">
+          <Link href="/dashboard/import" className="btn btn-primary w-full sm:w-auto">
             <BookOpen className="w-4 h-4" />
             Import Playlist
           </Link>
@@ -66,7 +66,7 @@ export default function CoursesPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search courses..."
-            className="w-full h-11 pl-10 pr-4 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+            className="w-full h-10 sm:h-11 pl-10 pr-4 rounded-xl border border-gray-200 text-sm sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
           />
         </div>
 
@@ -95,24 +95,25 @@ export default function CoursesPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.05, duration: 0.4 }}
+            className="h-full"
           >
             <Link
               href={`/dashboard/course/${course.id}`}
-              className="card card-interactive block overflow-hidden group"
+              className="card card-interactive block overflow-hidden group h-full sm:rounded-lg rounded-md"
             >
-              <div className="h-36 bg-gradient-to-br from-primary/5 to-accent/10 flex items-center justify-center relative">
+              <div className="h-24 sm:h-36 bg-gradient-to-br from-primary/5 to-accent/10 flex items-center justify-center relative">
                 <BookOpen className="w-10 h-10 text-primary/20" />
                 <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-white/90 text-xs font-medium text-gray-600 backdrop-blur-sm">
                   {course.category}
                 </div>
               </div>
-              <div className="p-4">
-                <h3 className="font-semibold text-gray-900 text-sm line-clamp-2 mb-2 group-hover:text-primary transition-colors">
+              <div className="p-3 sm:p-4 flex flex-col flex-1">
+                <h3 className="font-semibold text-gray-900 text-sm sm:text-base line-clamp-2 mb-2 group-hover:text-primary transition-colors">
                   {course.title}
                 </h3>
-                <p className="text-xs text-gray-500 mb-3">{course.author}</p>
+                <p className="text-xs text-gray-500 mb-2">{course.author}</p>
 
-                <div className="flex items-center gap-3 text-xs text-gray-400 mb-3">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-400 mb-3">
                   <span className="flex items-center gap-1">
                     <Clock className="w-3.5 h-3.5" />
                     {formatDuration(course.totalDuration)}
@@ -123,8 +124,7 @@ export default function CoursesPage() {
                   </span>
                   <span>⭐ {course.rating}</span>
                 </div>
-
-                <div className="flex items-center gap-3">
+                <div className="mt-auto flex items-center gap-3 w-full">
                   <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-primary rounded-full transition-all"

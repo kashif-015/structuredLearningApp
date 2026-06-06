@@ -17,6 +17,10 @@ import {
   HelpCircle,
 } from "lucide-react";
 import Link from "next/link";
+import { resolveYouTubeUrl, importPlaylistAsCourse } from "@/lib/api";
+import { useAppStore } from "@/lib/store";
+import { formatDuration } from "@/lib/utils";
+import type { Course } from "@/lib/mock-data";
 
 const analysisSteps = [
   { label: "Fetching playlist data", icon: Video },
@@ -28,21 +32,75 @@ const analysisSteps = [
 
 export default function ImportPage() {
   const [url, setUrl] = useState("");
-  const [status, setStatus] = useState<"idle" | "loading" | "done">("idle");
+  const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [currentStep, setCurrentStep] = useState(0);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [importedCourse, setImportedCourse] = useState<Course | null>(null);
+  const { importCourse } = useAppStore();
 
   const handleGenerate = async () => {
     if (!url.trim()) return;
     setStatus("loading");
     setCurrentStep(0);
+    setErrorMsg("");
 
-    for (let i = 0; i < analysisSteps.length; i++) {
-      await new Promise((res) => setTimeout(res, 1200));
-      setCurrentStep(i + 1);
+    try {
+      // Step 1: Resolve URL
+      setCurrentStep(0);
+      const resolveData = await resolveYouTubeUrl(url);
+      
+      let playlistId = "";
+      if (resolveData.type === "playlist") {
+        playlistId = resolveData.id;
+      } else {
+        throw new Error("Currently only playlist URLs are fully supported for automatic course generation. Please paste a playlist URL.");
+      }
+
+      // Step 2: Fetch and analyze playlist
+      setCurrentStep(1);
+      const courseData = await importPlaylistAsCourse(playlistId);
+
+      // Step 3: Generate course structure
+      setCurrentStep(2);
+      const newCourse: Course = {
+        id: `course-${Date.now()}`,
+        title: courseData.title,
+        description: `Imported from YouTube channel: ${courseData.channel}`,
+        author: courseData.channel,
+        category: "Imported",
+        rating: 0,
+        thumbnail: courseData.thumbnail || "",
+        lastAccessed: new Date().toISOString().split("T")[0],
+        enrolledDate: new Date().toISOString().split("T")[0],
+        totalDuration: courseData.totalDuration,
+        progress: 0,
+        playlistId: playlistId,
+        modules: courseData.modules.map((m: any) => ({
+          id: m.id,
+          title: m.title,
+          lessons: m.lectures.map((l: any) => ({
+            id: l.id,
+            title: l.title,
+            duration: Math.round(l.duration / 60),
+            videoId: l.videoId,
+            position: l.position,
+            completed: false,
+            resources: [`https://youtube.com/watch?v=${l.videoId}`],
+            summary: "AI summary pending...",
+          }))
+        }))
+      };
+
+      importCourse(newCourse);
+      setImportedCourse(newCourse);
+      
+      setCurrentStep(5); // Complete all visual steps
+      setStatus("done");
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err.message || "Failed to import playlist.");
+      setStatus("error");
     }
-
-    await new Promise((res) => setTimeout(res, 600));
-    setStatus("done");
   };
 
   return (
@@ -174,6 +232,22 @@ export default function ImportPage() {
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {status === "error" && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            className="mt-6 card p-6 border-danger/30 bg-danger-light/20"
+          >
+            <h3 className="text-sm font-semibold text-danger mb-2 flex items-center gap-2">
+              Import Failed
+            </h3>
+            <p className="text-sm text-danger/80">{errorMsg}</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Generated Course Preview */}
       <AnimatePresence>
         {status === "done" && (
@@ -199,18 +273,18 @@ export default function ImportPage() {
 
               <div className="card p-5 bg-white">
                 <h4 className="text-lg font-semibold text-gray-900 mb-2">
-                  Complete Web Development Bootcamp 2026
+                  {importedCourse?.title}
                 </h4>
                 <p className="text-sm text-gray-500 mb-4">
-                  Master HTML, CSS, JavaScript, React, Node.js and more in this comprehensive bootcamp.
+                  {importedCourse?.description}
                 </p>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                   {[
-                    { label: "Modules", value: "8", icon: BookOpen },
-                    { label: "Lessons", value: "42", icon: FileText },
-                    { label: "Duration", value: "24h", icon: Clock },
-                    { label: "Flashcards", value: "120", icon: Layers },
+                    { label: "Modules", value: importedCourse?.modules.length || 0, icon: BookOpen },
+                    { label: "Lessons", value: importedCourse?.modules.reduce((acc, m) => acc + m.lessons.length, 0) || 0, icon: FileText },
+                    { label: "Duration", value: formatDuration(importedCourse?.totalDuration || 0), icon: Clock },
+                    { label: "Flashcards", value: "Auto", icon: Layers },
                   ].map((stat) => (
                     <div key={stat.label} className="text-center p-3 rounded-xl bg-gray-50">
                       <stat.icon className="w-4 h-4 text-gray-400 mx-auto mb-1" />
@@ -222,27 +296,24 @@ export default function ImportPage() {
 
                 <div className="space-y-2 mb-4">
                   <h5 className="text-sm font-medium text-gray-700">Modules Preview</h5>
-                  {[
-                    "Getting Started with Web Development",
-                    "HTML & CSS Fundamentals",
-                    "JavaScript Deep Dive",
-                    "React & Modern Frontend",
-                  ].map((mod, i) => (
+                  {importedCourse?.modules.slice(0, 4).map((mod, i) => (
                     <div
-                      key={i}
+                      key={mod.id}
                       className="flex items-center gap-2 text-sm text-gray-600 py-1.5"
                     >
-                      <span className="w-6 h-6 rounded-md bg-primary-light text-primary text-xs font-medium flex items-center justify-center">
+                      <span className="w-6 h-6 rounded-md bg-primary-light text-primary text-xs font-medium flex items-center justify-center shrink-0">
                         {i + 1}
                       </span>
-                      {mod}
+                      <span className="truncate">{mod.title}</span>
                     </div>
                   ))}
-                  <p className="text-xs text-gray-400">+ 4 more modules</p>
+                  {(importedCourse?.modules.length || 0) > 4 && (
+                    <p className="text-xs text-gray-400">+ {(importedCourse?.modules.length || 0) - 4} more modules</p>
+                  )}
                 </div>
 
                 <Link
-                  href="/dashboard/course/course-1"
+                  href={`/dashboard/course/${importedCourse?.id}`}
                   className="btn btn-primary w-full"
                 >
                   Start Learning

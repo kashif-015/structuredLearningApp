@@ -12,8 +12,8 @@ import {
   BarChart3,
   Trophy,
 } from "lucide-react";
-import { mockStreakData, mockWeeklyProgress, mockMonthlyProgress, mockCourses } from "@/lib/mock-data";
-import { useAuthStore } from "@/lib/store";
+import { mockStreakData, mockWeeklyProgress, mockMonthlyProgress } from "@/lib/mock-data";
+import { useAuthStore, useAppStore } from "@/lib/store";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -28,8 +28,9 @@ const itemVariants = {
 export default function ProgressPage() {
   const [chartView, setChartView] = useState<"weekly" | "monthly">("weekly");
   const { user } = useAuthStore();
+  const { courses } = useAppStore();
 
-  const completedLessons = mockCourses.reduce(
+  const completedLessons = courses.reduce(
     (acc, c) =>
       acc +
       c.modules.reduce(
@@ -38,13 +39,13 @@ export default function ProgressPage() {
       ),
     0
   );
-  const totalLessons = mockCourses.reduce(
+  const totalLessons = courses.reduce(
     (acc, c) => acc + c.modules.reduce((a, m) => a + m.lessons.length, 0),
     0
   );
-  const avgCompletion = Math.round(
-    mockCourses.reduce((a, c) => a + c.progress, 0) / mockCourses.length
-  );
+  const avgCompletion = courses.length ? Math.round(
+    courses.reduce((a, c) => a + c.progress, 0) / courses.length
+  ) : 0;
 
   // Streak calendar: 12 weeks (84 days)
   const weeks: { date: string; minutes: number }[][] = [];
@@ -126,7 +127,7 @@ export default function ProgressPage() {
       </motion.div>
 
       <div className="grid lg:grid-cols-3 gap-8 mt-8">
-        <div className="lg:col-span-2 space-y-8">
+        <div className="lg:col-span-2 space-y-8 min-w-0">
           {/* Chart */}
           <motion.div variants={itemVariants} className="card p-5">
             <div className="flex items-center justify-between mb-6">
@@ -268,13 +269,13 @@ export default function ProgressPage() {
         </div>
 
         {/* Right: Course Breakdown */}
-        <motion.div variants={itemVariants} className="space-y-6">
+        <motion.div variants={itemVariants} className="space-y-6 min-w-0">
           <div className="card p-5">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">
               Course Progress
             </h2>
             <div className="space-y-4">
-              {mockCourses.map((course) => (
+              {courses.map((course) => (
                 <div key={course.id}>
                   <div className="flex items-center justify-between mb-1.5">
                     <p className="text-sm font-medium text-gray-900 truncate pr-4">
