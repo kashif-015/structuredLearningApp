@@ -40,8 +40,12 @@ function setCache(key: string, data: any) {
   try {
     fs.writeFileSync(path.join(CACHE_DIR, `${key}.json`), JSON.stringify(data));
   } catch (err) {
-    console.warn("Failed to write cache:", err);
+  if (err instanceof Error) {
+    console.warn("HF embedding failed, falling back:", err.message);
+  } else {
+    console.warn("HF embedding failed, falling back:", String(err));
   }
+}
 }
 
 // ── Singleton embedding model ──────────────────────────────
