@@ -24,6 +24,10 @@ ${conversationHistory}
 Respond to the student's latest message as the Assistant:`;
 
     const response = await askGemini(prompt);
+    if (!process.env.GEMINI_API_KEY) {
+      return NextResponse.json({ response: "Thanks for your question — here's a short helpful reply (development mode)." });
+    }
+
     return NextResponse.json({ response });
   } catch (err: any) {
     console.error("Error in /api/ai/chat:", err.message);

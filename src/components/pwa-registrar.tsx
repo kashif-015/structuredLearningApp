@@ -4,7 +4,8 @@ import { useEffect } from "react";
 
 export default function PwaRegistrar() {
   useEffect(() => {
-    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+    // Register service worker only in production to avoid interfering with dev fast refresh
+    if (process.env.NODE_ENV === "production" && typeof window !== "undefined" && "serviceWorker" in navigator) {
       window.addEventListener("load", () => {
         navigator.serviceWorker
           .register("/sw.js")

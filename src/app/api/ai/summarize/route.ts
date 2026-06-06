@@ -6,6 +6,12 @@ export async function POST(req: Request) {
     const { videoTitle, videoDescription } = await req.json();
     if (!videoTitle) return NextResponse.json({ error: "videoTitle is required" }, { status: 400 });
 
+    if (!process.env.GEMINI_API_KEY) {
+      // Dev fallback
+      const summary = `• ${videoTitle} — key concept 1\n• ${videoTitle} — key concept 2\n• ${videoTitle} — key concept 3`;
+      return NextResponse.json({ summary });
+    }
+
     const prompt = `You are an expert educational content summarizer.
 
 Summarize the following lecture in 3–5 concise key points that a student should remember. Be specific, actionable, and avoid filler.

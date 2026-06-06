@@ -30,17 +30,30 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
+  // For non-GET requests (POST, PUT, etc.) always pass through to network
+  if (event.request.method && event.request.method !== 'GET') {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
   // Don't cache API routes or external requests, except standard static assets
   if (!url.pathname.startsWith('/_next/static') && 
       !url.pathname.startsWith('/icons') &&
       url.origin === location.origin) {
-    // Network first for pages and dynamic content
+    // Network first for pages and dynamic content (only GET requests reach here)
     event.respondWith(
       fetch(event.request)
         .then((response) => {
+          // Only cache successful GET responses
+          if (!response || response.status !== 200 || response.type === 'opaque') return response;
           const resClone = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, resClone);
+            // wrap in try/catch to avoid unhandled rejections
+            try {
+              cache.put(event.request, resClone).catch(() => {});
+            } catch (e) {
+              // ignore cache errors
+            }
           });
           return response;
         })
@@ -59,7 +72,13 @@ self.addEventListener('fetch', (event) => {
     caches.match(event.request).then((cachedResponse) => {
       const fetchPromise = fetch(event.request).then((networkResponse) => {
         caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, networkResponse.clone());
+          try {
+            if (networkResponse && !networkResponse.bodyUsed) {
+              cache.put(event.request, networkResponse.clone()).catch(() => {});
+            }
+          } catch (e) {
+            // ignore cloning/caching errors
+          }
         });
         return networkResponse;
       });

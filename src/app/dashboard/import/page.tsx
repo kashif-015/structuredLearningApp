@@ -64,7 +64,7 @@ export default function ImportPage() {
       setCurrentStep(2);
       const newCourse: Course = {
         id: `course-${Date.now()}`,
-        title: courseData.title,
+        title: courseData.courseName || courseData.title,
         description: `Imported from YouTube channel: ${courseData.channel}`,
         author: courseData.channel,
         category: "Imported",
@@ -83,7 +83,8 @@ export default function ImportPage() {
             title: l.title,
             duration: Math.round(l.duration / 60),
             videoId: l.videoId,
-            position: l.position,
+            position: l.lectureNumber ?? l.position,
+            indexInModule: l.indexInModule ?? null,
             completed: false,
             resources: [`https://youtube.com/watch?v=${l.videoId}`],
             summary: "AI summary pending...",

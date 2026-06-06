@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { ytFetch } from "@/lib/youtube-utils";
+import { mockCourses } from "@/lib/mock-data";
 
 export async function POST(req: Request) {
   try {
@@ -9,6 +10,12 @@ export async function POST(req: Request) {
     // Step 1: Resolve to canonical channel ID
     let resolvedId = channelId;
     let channelName;
+    // Development fallback: if YT API key missing, return mock playlists
+    if (!process.env.YOUTUBE_API_KEY) {
+      console.warn("YOUTUBE_API_KEY is missing — returning mock playlists for development");
+      const playlists = mockCourses.map((c, i) => ({ id: `pl-${i+1}`, title: c.title, thumbnail: c.thumbnail, itemCount: c.modules.flatMap(m => m.lessons).length }));
+      return NextResponse.json({ type: "channel_playlists", channelName: "Mock Channel", playlists });
+    }
     if (channelId.startsWith("@")) {
       const data = await ytFetch("channels", { forHandle: channelId.slice(1), part: "id,snippet" });
       if (!data.items?.length) return NextResponse.json({ error: "Channel not found" }, { status: 404 });

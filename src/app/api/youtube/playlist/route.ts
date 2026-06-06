@@ -1,11 +1,27 @@
 import { NextResponse } from "next/server";
 import { ytFetch, parseDuration } from "@/lib/youtube-utils";
 import { getTranscript, extractKeywords, getEmbedding, clusterVideos, generateModuleTitle } from "@/lib/ml";
+import { mockCourses } from "@/lib/mock-data";
 
 export async function POST(req: Request) {
   try {
     const { playlistId } = await req.json();
     if (!playlistId) return NextResponse.json({ error: "playlistId is required" }, { status: 400 });
+
+    // Development fallback: if YT API key missing, return a mocked course derived from mock data
+    if (!process.env.YOUTUBE_API_KEY) {
+      console.warn("YOUTUBE_API_KEY is missing — returning local mock course for development");
+      const mock = mockCourses[0];
+      return NextResponse.json({
+        title: mock.title,
+        channel: mock.author,
+        thumbnail: mock.thumbnail,
+        totalLectures: mock.modules.flatMap(m => m.lessons).length,
+        totalDuration: mock.totalDuration,
+        learningOutcomes: ["Introductory topics", "Core concepts", "Practical exercises"],
+        modules: mock.modules.map((m, idx) => ({ id: `mod-${idx+1}`, title: m.title, lectures: m.lessons.map((l, i) => ({ id: `lec-${i+1}`, title: l.title, videoId: l.videoId, thumbnail: "/api/placeholder/320/180", duration: l.duration, position: i+1 })) })),
+      });
+    }
 
     // Step 1: Get playlist metadata
     const plMeta = await ytFetch("playlists", { id: playlistId, part: "snippet" });
@@ -84,11 +100,12 @@ export async function POST(req: Request) {
     const modules = clusters
       .map((clusterVideos: any[], idx: number) => ({
         id: `mod-${idx + 1}`,
-        title: generateModuleTitle(clusterVideos),
+        title: generateModuleTitle(clusterVideos, playlistTitle),
         // Within each module videos are already sorted by position (done in clusterVideos)
-        lectures: clusterVideos.map(v => {
+        lectures: clusterVideos.map((v, i) => {
           const { embedding, keywords, ...rest } = v;
-          return rest;
+          // preserve original playlist position and add module-local index
+          return { ...rest, lectureNumber: rest.position, indexInModule: i + 1 };
         }),
       }))
       // Sort modules so the one containing the earliest playlist video comes first
@@ -114,6 +131,7 @@ export async function POST(req: Request) {
     ];
 
     return NextResponse.json({
+      courseName: playlistTitle,
       title: playlistTitle,
       channel: playlistChannel,
       thumbnail: playlistThumbnail,

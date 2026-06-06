@@ -5,6 +5,15 @@ export async function POST(req: Request) {
   try {
     const { videoTitle } = await req.json();
     if (!videoTitle) return NextResponse.json({ error: "videoTitle is required" }, { status: 400 });
+    if (!process.env.GEMINI_API_KEY) {
+      // Dev fallback: simple mock quiz
+      const quiz = Array.from({ length: 5 }).map((_, i) => ({
+        question: `${videoTitle} - sample question ${i + 1}`,
+        options: ["A) Option 1", "B) Option 2", "C) Option 3", "D) Option 4"],
+        correct_answer: "A) Option 1",
+      }));
+      return NextResponse.json({ quiz });
+    }
 
     const prompt = `You are an expert quiz creator for educational content.
 

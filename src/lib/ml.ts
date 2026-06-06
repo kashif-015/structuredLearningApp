@@ -1,4 +1,15 @@
-import { pipeline, env } from "@huggingface/transformers";
+let pipeline: any;
+let env: any;
+try {
+  // @ts-ignore
+  const hf = require("@huggingface/transformers");
+  pipeline = hf.pipeline;
+  env = hf.env;
+} catch (e) {
+  console.warn("@huggingface/transformers not available — falling back to lightweight ML.");
+  pipeline = null;
+  env = null;
+}
 import { YoutubeTranscript } from "youtube-transcript";
 // @ts-ignore
 import natural from "natural";
@@ -8,11 +19,13 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 
-// Configure Hugging Face Transformers for Vercel
-env.allowLocalModels = false;
-env.useBrowserCache = false;
-// Vercel Serverless Functions only allow writing to /tmp
-env.cacheDir = path.join(os.tmpdir(), ".cache");
+if (env) {
+  // Configure Hugging Face Transformers for Vercel
+  env.allowLocalModels = false;
+  env.useBrowserCache = false;
+  // Vercel Serverless Functions only allow writing to /tmp
+  env.cacheDir = path.join(os.tmpdir(), ".cache");
+}
 
 const CACHE_DIR = path.join(os.tmpdir(), "eduflow_data");
 if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
@@ -34,6 +47,7 @@ function setCache(key: string, data: any) {
 // ── Singleton embedding model ──────────────────────────────
 let extractor: any;
 async function getExtractor() {
+  if (!pipeline) throw new Error("Local HF pipeline not available");
   if (!extractor) {
     console.log("Loading all-MiniLM-L6-v2...");
     extractor = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2");
@@ -74,9 +88,33 @@ export function extractKeywords(text: string, n = 15) {
 export async function getEmbedding(videoId: string, text: string) {
   const cached = getCache(`embedding_${videoId}`);
   if (cached) return cached.embedding;
-  const model = await getExtractor();
-  const out = await model(text, { pooling: "mean", normalize: true });
-  const embedding = Array.from(out.data);
+
+  // If HF pipeline is available, use it; otherwise fall back to a lightweight embedding
+  if (pipeline) {
+    try {
+      const model = await getExtractor();
+      const out = await model(text, { pooling: "mean", normalize: true });
+      const embedding = Array.from(out.data);
+      setCache(`embedding_${videoId}`, { embedding });
+      return embedding;
+    } catch (err) {
+      console.warn("HF embedding failed, falling back:", err?.message || err);
+    }
+  }
+
+  // Fallback embedding: simple hashed keyword vector (deterministic)
+  const kws = extractKeywords(text, 32);
+  const vecLen = 128;
+  const vec = new Array(vecLen).fill(0);
+  for (let i = 0; i < kws.length; i++) {
+    const w = kws[i];
+    let h = 0;
+    for (let j = 0; j < w.length; j++) h = (h * 31 + w.charCodeAt(j)) >>> 0;
+    vec[i] = (h % 1000) / 1000; // 0..0.999
+  }
+  // normalize
+  const norm = Math.sqrt(vec.reduce((s, v) => s + v * v, 0) || 1);
+  const embedding = vec.map((v) => v / norm);
   setCache(`embedding_${videoId}`, { embedding });
   return embedding;
 }
@@ -137,7 +175,7 @@ export function clusterVideos(videos: any[]) {
 }
 
 // ── Module title from cluster keywords ────────────────────
-export function generateModuleTitle(clusterVideos: any[]) {
+export function generateModuleTitle(clusterVideos: any[], playlistTitle?: string) {
   const allKws = clusterVideos.flatMap(v => v.keywords || []);
   if (allKws.length === 0) {
     // fallback: use video title words
@@ -147,7 +185,13 @@ export function generateModuleTitle(clusterVideos: any[]) {
     const c: Record<string, number> = {}; 
     words.forEach((w: string) => c[w] = (c[w] || 0) + 1);
     const top = Object.entries(c).sort((a,b)=>b[1]-a[1]).slice(0,2).map(x=>x[0].charAt(0).toUpperCase()+x[0].slice(1));
-    return top.join(" & ") || "General Topics";
+    if (top.length > 0) return top.join(" & ");
+    // if still nothing, try to use playlist title words
+    if (playlistTitle) {
+      const p = playlistTitle.split(/\s+/).filter((w) => w.length > 3).slice(0,2).map(w => w.replace(/[^a-zA-Z]/g, ""));
+      if (p.length) return p.map(s => s.charAt(0).toUpperCase()+s.slice(1)).join(" ");
+    }
+    return "General Topics";
   }
   const c: Record<string, number> = {}; 
   allKws.forEach(k => c[k] = (c[k] || 0) + 1);
