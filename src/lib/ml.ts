@@ -97,8 +97,9 @@ export async function getEmbedding(videoId: string, text: string) {
       const embedding = Array.from(out.data);
       setCache(`embedding_${videoId}`, { embedding });
       return embedding;
-    } catch (err) {
-      console.warn("HF embedding failed, falling back:", err?.message || err);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn("HF embedding failed, falling back:", message);
     }
   }
 
